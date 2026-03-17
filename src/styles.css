@@ -1,0 +1,346 @@
+/* ── Reset & base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: #f4f6f9;
+  color: #1a1a2e;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Tokens ────────────────────────────────────────────────────────────────── */
+:root {
+  --navy:        #0a1f44;
+  --navy-2:      #1a3a6e;
+  --blue:        #1565c0;
+  --green:       #2e7d32;
+  --green-bg:    #e8f5e9;
+  --amber:       #f57c00;
+  --amber-bg:    #fff3e0;
+  --bg:          #f4f6f9;
+  --card:        #ffffff;
+  --border:      #e0e5ee;
+  --text:        #1a1a2e;
+  --muted:       #6b7280;
+  --shadow:      0 2px 12px rgba(0,0,0,0.08);
+  --shadow-lg:   0 4px 24px rgba(0,0,0,0.12);
+  --radius:      12px;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+.tracker {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+.tracker__body {
+  padding: 0 16px 40px;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────────── */
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+  padding: 28px 24px 48px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  left: 0; right: 0;
+  height: 40px;
+  background: var(--bg);
+  border-radius: 50% 50% 0 0 / 20px 20px 0 0;
+}
+
+.hero__left { flex: 1; }
+
+.hero__logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: block;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  object-fit: contain;
+  background: rgba(255,255,255,0.1);
+}
+
+.hero__eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 6px;
+}
+
+.hero__vehicle {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 10px;
+}
+
+.hero__badge {
+  display: inline-block;
+  background: var(--amber);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.hero__right {
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.hero__ref-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 4px;
+}
+
+.hero__ref-number {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Section labels ────────────────────────────────────────────────────────── */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 20px 0 8px 4px;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.card--steps { padding: 16px 20px 12px; }
+
+/* ── Step progress bar ─────────────────────────────────────────────────────── */
+.step-bar {
+  list-style: none;
+  counter-reset: step;
+}
+
+.step-bar__item {
+  display: flex;
+  align-items: flex-start;
+  position: relative;
+  padding-bottom: 4px;
+}
+
+.step-bar__circle {
+  counter-increment: step;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+
+  /* default: pending */
+  background: #fff;
+  border: 2px solid var(--border);
+  color: var(--muted);
+}
+
+.step-bar__label {
+  padding: 6px 0 6px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+/* Connector line */
+.step-bar__line {
+  position: absolute;
+  left: 15px;
+  top: 32px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--border);
+}
+
+/* Done state */
+.step-bar__item--done .step-bar__circle {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.step-bar__item--done .step-bar__label { color: var(--text); font-weight: 600; }
+.step-bar__item--done .step-bar__line  { background: var(--green); }
+
+/* Active / in-progress state */
+.step-bar__item--active .step-bar__circle {
+  background: var(--amber-bg);
+  border-color: var(--amber);
+  color: var(--amber);
+  box-shadow: 0 0 0 4px rgba(245,124,0,0.15);
+}
+.step-bar__item--active .step-bar__label {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+/* ── Advisor card ──────────────────────────────────────────────────────────── */
+.advisor-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.advisor-card__avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.advisor-card__name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.advisor-card__phone {
+  display: block;
+  color: var(--blue);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  margin-bottom: 4px;
+}
+.advisor-card__phone:hover { text-decoration: underline; }
+
+.advisor-card__email {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ── Notification toggles ──────────────────────────────────────────────────── */
+.toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.toggle:last-child { border-bottom: none; padding-bottom: 0; }
+.toggle:first-child { padding-top: 0; }
+
+.toggle__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  user-select: none;
+}
+
+.toggle__switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.toggle__switch input {
+  opacity: 0;
+  width: 0; height: 0;
+  position: absolute;
+}
+
+.toggle__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  background: var(--border);
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.toggle__track::after {
+  content: '';
+  position: absolute;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  top: 3px; left: 3px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.toggle__switch input:checked + .toggle__track { background: var(--blue); }
+.toggle__switch input:checked + .toggle__track::after { transform: translateX(20px); }
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.tracker__footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  padding-bottom: 16px;
+}
+
+/* ── States ────────────────────────────────────────────────────────────────── */
+.loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 16px;
+  color: var(--muted);
+  text-align: center;
+  padding: 24px;
+  gap: 8px;
+}

@@ -1,11 +1,18 @@
-// Mock data — mirrors the real XTCON response shape exactly.
+// Mock data — mirrors the normalized response shape from the server.
 // Change appointmentStatus to preview different stages:
-//   'arrived' | 'inspecting' | 'servicing' | 'final inspection' | 'completed'
+//   'not_arrived' | 'arrived' | 'in_progress' | 'wash_bay' | 'vehicle_ready'
+//
+// These map from real Xtime statuses:
+//   NOT_ARRIVED → not_arrived
+//   CHECKED_IN  → arrived
+//   ARRIVED / WITH_ADVISOR → in_progress
+//   PENDING_CUSTOMER_AUTORIZATION → wash_bay
+//   COMPLETED → vehicle_ready
 
 export const mockTrackerData = {
   reservationId: 123456789,
   confirmationKey: 'MOCK-CONF-001',
-  appointmentStatus: 'servicing',   // ← change this to preview status
+  appointmentStatus: 'in_progress',  // ← change this to preview status
   statusTrackerEnabled: true,
   personId: 987654,
   dealerName: 'Sydney Ford',

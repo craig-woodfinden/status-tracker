@@ -27,6 +27,34 @@ const TRACKER_BASE_URL = (process.env.TRACKER_BASE_URL || 'http://localhost:5173
 
 app.use(express.json());
 
+// ── Xtime status → normalized tracker status ──────────────────────────────────
+// Xtime returns uppercase_underscore statuses. We normalize to snake_case keys
+// that match the step bar labels in the frontend.
+//
+// Xtime status        Normalized       Step label
+// ─────────────────── ──────────────── ─────────────
+// NOT_ARRIVED         not_arrived      Not Arrived
+// CHECKED_IN          arrived          Arrived
+// ARRIVED             in_progress      In Progress
+// WITH_ADVISOR        in_progress      In Progress
+// PENDING_CUSTOMER_AUTORIZATION
+//                     wash_bay         Wash Bay
+// COMPLETED           vehicle_ready    Vehicle Ready
+
+const XTIME_STATUS_MAP = {
+  NOT_ARRIVED:                    'not_arrived',
+  CHECKED_IN:                     'arrived',
+  ARRIVED:                        'in_progress',
+  WITH_ADVISOR:                   'in_progress',
+  PENDING_CUSTOMER_AUTORIZATION:  'wash_bay',
+  COMPLETED:                      'vehicle_ready',
+};
+
+function mapStatus(xtimeStatus) {
+  if (!xtimeStatus) return 'not_arrived';
+  return XTIME_STATUS_MAP[xtimeStatus] || xtimeStatus.toLowerCase();
+}
+
 // ── Core fetch helper ─────────────────────────────────────────────────────────
 // Accepts the full path relative to xtHost (no prefix assumed).
 // Retries once with a fresh token on 401.
@@ -80,8 +108,17 @@ app.get('/api/status', async (req, res) => {
     );
 
     const data = await upstream.json();
-    console.log(`[status] dealer=${webKey} reservation=${reservationId} status=${upstream.status}`);
-    res.status(upstream.status).json(data);
+
+    // Normalize the Xtime status to the tracker's internal format
+    const rawStatus = data.status || data.appointmentStatus;
+    const normalizedStatus = mapStatus(rawStatus);
+    console.log(`[status] dealer=${webKey} reservation=${reservationId} raw=${rawStatus} → ${normalizedStatus}`);
+
+    res.status(upstream.status).json({
+      ...data,
+      appointmentStatus: normalizedStatus,
+      rawStatus,
+    });
   } catch (err) {
     console.error('[/api/status]', err.message);
     res.status(500).json({ error: err.message });
@@ -108,8 +145,17 @@ app.get('/api/tracker', async (req, res) => {
     );
 
     const data = await upstream.json();
-    console.log(`[tracker] dealer=${webKey} reservation=${reservationId} status=${upstream.status}`);
-    res.status(upstream.status).json(data);
+
+    // Normalize status field — tracker endpoint may return appointmentStatus or status
+    const rawStatus = data.appointmentStatus || data.status;
+    const normalizedStatus = mapStatus(rawStatus);
+    console.log(`[tracker] dealer=${webKey} reservation=${reservationId} raw=${rawStatus} → ${normalizedStatus}`);
+
+    res.status(upstream.status).json({
+      ...data,
+      appointmentStatus: normalizedStatus,
+      rawStatus,
+    });
   } catch (err) {
     console.error('[/api/tracker]', err.message);
     res.status(500).json({ error: err.message });

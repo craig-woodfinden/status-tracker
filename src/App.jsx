@@ -14,11 +14,11 @@ function getUrlParams() {
 }
 
 const STATUS_BADGE_LABELS = {
-  arrived:          'Arrival',
-  inspecting:       'Inspection',
-  servicing:        'Service',
-  'final inspection': 'Final touches',
-  completed:        'Ready for pick up',
+  not_arrived:   'Not Arrived',
+  arrived:       'Arrived',
+  in_progress:   'In Progress',
+  wash_bay:      'Wash Bay',
+  vehicle_ready: 'Vehicle Ready',
 };
 
 export default function App() {

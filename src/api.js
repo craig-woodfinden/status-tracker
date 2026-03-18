@@ -1,64 +1,46 @@
 // ── API client ───────────────────────────────────────────────────────────────
+// The frontend calls our own Express server (/api/*).
+// All Xtime authentication happens server-side — credentials and tokens
+// are never sent to or stored in the browser.
 //
-// Production:  calls your backend via /api proxy (see vite.config.js)
-//              Original XTCON endpoint:
-//                GET /rest/statustracker/appointment/{reservationId}/details
-//                  ?webKey=FORD01&country=AU&language=en_AU&tokenId=<token>
-//
-// Mock mode:   set VITE_MOCK_MODE=true in .env.local — no network calls
-//
-// To swap in a different backend, just update BASE_URL and the fetch calls below.
+// Mock mode: set VITE_MOCK_MODE=true in .env.local — no network calls at all.
 
 const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
-const BASE_URL = '/api';
 
-// ── Mock data ────────────────────────────────────────────────────────────────
 import { mockTrackerData, mockPreferences } from './mockData';
 
-// ── Fetch wrapper ────────────────────────────────────────────────────────────
-async function apiFetch(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-  });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+async function apiFetch(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`Request failed (${res.status}): ${path}`);
   return res.json();
 }
 
-// ── Status Tracker ───────────────────────────────────────────────────────────
-// GET /rest/statustracker/appointment/{reservationId}/details
-// Query params: webKey, country, language, tokenId
-export async function getTrackerData({ reservationId, webKey, country = 'AU', language = 'en_AU', tokenId }) {
+// GET /api/tracker?reservationId=&webKey=&country=&language=
+export async function getTrackerData({ reservationId, webKey, country = 'AU', language = 'en_AU' }) {
   if (MOCK_MODE) {
     return new Promise(resolve => setTimeout(() => resolve(mockTrackerData), 400));
   }
-  return apiFetch(
-    `/rest/statustracker/appointment/${reservationId}/details`,
-    { method: 'GET', headers: tokenId ? { Authorization: `Bearer ${tokenId}` } : {} },
-  ).then(data => {
-    // attach query context back (some consumers need webKey)
-    return { ...data, _webKey: webKey };
-  });
+  return apiFetch(`/api/tracker?reservationId=${reservationId}&webKey=${webKey}&country=${country}&language=${language}`);
 }
 
-// ── Notification preferences ─────────────────────────────────────────────────
-// GET /rest/customer/preferences/{webKey}/{personId}
+// GET /api/preferences?webKey=&personId=
 export async function getPreferences({ webKey, personId }) {
   if (MOCK_MODE) {
     return new Promise(resolve => setTimeout(() => resolve(mockPreferences), 200));
   }
-  return apiFetch(`/rest/customer/preferences/${webKey}/${personId}`);
+  return apiFetch(`/api/preferences?webKey=${webKey}&personId=${personId}`);
 }
 
-// POST /rest/customer/{personId}/dealer/{webKey}/preference/{notificationType}/{action}
-// notificationType: 'email' | 'text'   action: 'enable' | 'disable'
+// POST /api/preferences  { webKey, personId, notificationType, enabled }
 export async function updatePreference({ personId, webKey, notificationType, enabled }) {
   if (MOCK_MODE) {
     return new Promise(resolve => setTimeout(() => resolve({ success: true }), 200));
   }
-  const action = enabled ? 'enable' : 'disable';
-  return apiFetch(
-    `/rest/customer/${personId}/dealer/${webKey}/preference/${notificationType}/${action}`,
-    { method: 'POST' }
-  );
+  const res = await fetch('/api/preferences', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ webKey, personId, notificationType, enabled }),
+  });
+  if (!res.ok) throw new Error(`Preference update failed (${res.status})`);
+  return res.json();
 }

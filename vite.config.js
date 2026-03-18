@@ -5,12 +5,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // Proxy API calls to XTCON backend (update host for production)
+    // Proxy all /api calls to the Express auth server
     proxy: {
       '/api': {
-        target: process.env.XTCON_HOST || 'http://localhost:3333',
+        target: 'http://localhost:3001',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/api/, '/consumer'),
       },
     },
   },

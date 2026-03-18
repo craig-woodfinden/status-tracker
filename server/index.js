@@ -139,49 +139,81 @@ app.get('/api/link', (req, res) => {
 // Accepts the raw response body from the Xtime appointment create API and
 // returns the ready-to-send customer tracker URL.
 //
-// Appointment create response shape (from x9.vela.net.au):
-//   { success: true, reservationId: 69542875560, confKey: "X09OBV47Z6", apptDateTime: "...", ... }
+// Both webKey and reservationId are dynamic:
+//   - webKey      is unique per dealer — extracted from the appointment create
+//                 URL path (/dealerxt/{webKey}/appointment/create) OR passed
+//                 explicitly in the request body.
+//   - reservationId is unique per appointment — always comes from the response.
 //
-// Call this immediately after appointment creation — pass the full response body
-// along with the webKey for the dealer.
+// The token cache handles each webKey independently, so multiple dealers
+// can use this server simultaneously with no conflicts.
 //
-// Example:
+// Option A — pass webKey explicitly:
 //   POST /api/link/from-appointment
-//   { "success": true, "reservationId": 69542875560, "confKey": "X09OBV47Z6", "webKey": "australiaford" }
+//   {
+//     "success": true,
+//     "reservationId": 69542875560,
+//     "confKey": "X09OBV47Z6",
+//     "apptDateTime": "2026-03-18 12:30:00",
+//     "webKey": "australiaford"
+//   }
 //
-//   → {
-//       url: "https://tracker.yourdomain.com/?reservationId=69542875560&webKey=australiaford",
-//       reservationId: 69542875560,
-//       confKey: "X09OBV47Z6",
-//       apptDateTime: "2026-03-18 12:30:00"
-//     }
+// Option B — pass the appointment create URL and let the server extract webKey:
+//   POST /api/link/from-appointment
+//   {
+//     "success": true,
+//     "reservationId": 69542875560,
+//     "confKey": "X09OBV47Z6",
+//     "apptDateTime": "2026-03-18 12:30:00",
+//     "appointmentUrl": "https://x9.vela.net.au/panama/rest/dealerxt/australiaford/appointment/create"
+//   }
+//
+// Response:
+//   {
+//     "url": "https://tracker.yourdomain.com/?reservationId=69542875560&webKey=australiaford",
+//     "reservationId": 69542875560,
+//     "confKey": "X09OBV47Z6",
+//     "apptDateTime": "2026-03-18 12:30:00",
+//     "webKey": "australiaford"
+//   }
+
+// Extracts the webKey from an Xtime appointment create URL.
+// URL pattern: .../dealerxt/{webKey}/appointment/create
+function extractWebKeyFromUrl(appointmentUrl) {
+  try {
+    const match = appointmentUrl.match(/\/dealerxt\/([^/]+)\//);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
 
 app.post('/api/link/from-appointment', (req, res) => {
-  const { success, reservationId, confKey, apptDateTime, webKey } = req.body;
+  const { success, reservationId, confKey, apptDateTime, appointmentUrl } = req.body;
+  let { webKey } = req.body;
+
+  // If webKey not passed directly, try to extract from the appointment URL
+  if (!webKey && appointmentUrl) {
+    webKey = extractWebKeyFromUrl(appointmentUrl);
+  }
 
   if (!success) {
     return res.status(400).json({ error: 'Appointment was not successful — no link generated' });
   }
-
   if (!reservationId) {
     return res.status(400).json({ error: 'reservationId missing from appointment response' });
   }
-
   if (!webKey) {
-    return res.status(400).json({ error: 'webKey is required (e.g. "australiaford")' });
+    return res.status(400).json({
+      error: 'webKey could not be determined. Pass "webKey" explicitly or pass "appointmentUrl" containing /dealerxt/{webKey}/'
+    });
   }
 
   const url = `${TRACKER_BASE_URL}/?reservationId=${reservationId}&webKey=${webKey}`;
 
-  console.log(`[link] Generated tracker link for reservation ${reservationId}: ${url}`);
+  console.log(`[link] dealer=${webKey} reservation=${reservationId} → ${url}`);
 
-  res.json({
-    url,
-    reservationId,
-    confKey,
-    apptDateTime,
-    webKey,
-  });
+  res.json({ url, reservationId, confKey, apptDateTime, webKey });
 });
 
 // ── GET /api/health ───────────────────────────────────────────────────────────

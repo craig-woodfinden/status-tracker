@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getTrackerData, getPreferences, updatePreference } from './api';
+import { getStatus, getTrackerData, getPreferences, updatePreference } from './api';
 import StepProgressBar from './components/StepProgressBar';
 import AdvisorCard from './components/AdvisorCard';
 import NotificationToggles from './components/NotificationToggles';
@@ -10,7 +10,6 @@ function getUrlParams() {
   return {
     reservationId: p.get('reservationId'),
     webKey: p.get('webKey') || p.get('webkey'),
-    tokenId: p.get('tokenId'),
   };
 }
 
@@ -34,11 +33,23 @@ export default function App() {
   useEffect(() => {
     async function load() {
       try {
+        // Step 1: fetch live status from panama endpoint (fires on every page open)
+        const status = await getStatus({
+          reservationId: params.reservationId,
+          webKey: params.webKey,
+        }).catch(() => null); // non-fatal — tracker data has a fallback status
+
+        // Step 2: fetch full tracker data (advisor, vehicle, dealer, notification flags)
         const tracker = await getTrackerData({
           reservationId: params.reservationId,
           webKey: params.webKey,
-          tokenId: params.tokenId,
         });
+
+        // Step 3: if status call returned an appointmentStatus, use it — it's fresher
+        if (status?.appointmentStatus) {
+          tracker.appointmentStatus = status.appointmentStatus;
+        }
+
         setData(tracker);
 
         // Load notification preferences if personId is available

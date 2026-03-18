@@ -15,6 +15,14 @@ async function apiFetch(path) {
   return res.json();
 }
 
+// GET /api/status?reservationId=&webKey=
+// Fetches live appointment status — call this first when the page loads.
+// Hits: {xtHost}/panama/rest/dealerxt/{webKey}/appointment/{reservationId}/updateReservationStatus
+export async function getStatus({ reservationId, webKey }) {
+  if (MOCK_MODE) return null; // mock mode gets status from tracker data
+  return apiFetch(`/api/status?reservationId=${reservationId}&webKey=${webKey}`);
+}
+
 // GET /api/tracker?reservationId=&webKey=&country=&language=
 export async function getTrackerData({ reservationId, webKey, country = 'AU', language = 'en_AU' }) {
   if (MOCK_MODE) {

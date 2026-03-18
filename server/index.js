@@ -3,12 +3,17 @@
 // Handles all authentication silently — the browser never sees credentials or tokens.
 //
 // Endpoints:
-//   GET  /api/tracker?reservationId=123&webKey=australiaford
+//   GET  /api/status?reservationId=123&webKey=australiaford        ← call on page load
+//   GET  /api/tracker?reservationId=123&webKey=australiaford       ← full tracker data
 //   GET  /api/preferences?webKey=australiaford&personId=987654
 //   POST /api/preferences { webKey, personId, notificationType, enabled }
 //   GET  /api/link?reservationId=123&webKey=australiaford
-//   POST /api/link/from-appointment  (accepts raw appointment create response body)
+//   POST /api/link/from-appointment
 //   GET  /api/health
+//
+// Xtime API path families:
+//   /consumer/rest/...   — status tracker, customer preferences
+//   /panama/rest/...     — appointment status, dealer operations
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local') });
 
@@ -18,38 +23,76 @@ const { getXtToken, invalidateXtToken } = require('./tokenCache');
 
 const app  = express();
 const PORT = process.env.SERVER_PORT || 3001;
-
-// Base URL of the deployed tracker frontend — used when generating customer links
-// Set TRACKER_BASE_URL in .env.local for production (e.g. https://tracker.yourdomain.com)
 const TRACKER_BASE_URL = (process.env.TRACKER_BASE_URL || 'http://localhost:5173').replace(/\/$/, '');
 
 app.use(express.json());
 
-// ── Helper: call XTCON with a given path, auto-retry once on 401 ─────────────
+// ── Core fetch helper ─────────────────────────────────────────────────────────
+// Accepts the full path relative to xtHost (no prefix assumed).
+// Retries once with a fresh token on 401.
 
-async function xtconGet(webKey, path, country = 'AU', language = 'en_AU') {
+async function xtFetch(webKey, fullPath, method = 'GET') {
   const { xtToken, xtHost } = await getXtToken(webKey);
-  const url = `${xtHost.replace(/\/$/, '')}/consumer/${path}`;
+  const base = xtHost.replace(/\/$/, '');
 
-  let res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+  // Inject tokenId into query string
+  const separator = fullPath.includes('?') ? '&' : '?';
+  const url = `${base}/${fullPath}${separator}tokenId=${xtToken}`;
+
+  let res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  });
 
   if (res.status === 401) {
+    console.log(`[auth] 401 on ${fullPath} — refreshing token for ${webKey}`);
     invalidateXtToken(webKey);
     const retry = await getXtToken(webKey);
-    const retryUrl = `${retry.xtHost.replace(/\/$/, '')}/consumer/${path.replace(xtToken, retry.xtToken)}`;
-    res = await fetch(retryUrl, { headers: { 'Content-Type': 'application/json' } });
+    const retryBase = retry.xtHost.replace(/\/$/, '');
+    const retryUrl = `${retryBase}/${fullPath}${separator}tokenId=${retry.xtToken}`;
+    res = await fetch(retryUrl, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   return res;
 }
 
-async function xtconPost(webKey, path) {
-  const { xtToken, xtHost } = await getXtToken(webKey);
-  const url = `${xtHost.replace(/\/$/, '')}/consumer/${path}`;
-  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-}
+// ── GET /api/status ───────────────────────────────────────────────────────────
+// Called when the customer opens their tracker link.
+// Hits the updateReservationStatus endpoint to fetch the live appointment status.
+//
+// Xtime endpoint:
+//   GET {xtHost}/panama/rest/dealerxt/{webKey}/appointment/{reservationId}/updateReservationStatus
 
-// ── GET /api/tracker ─────────────────────────────────────────────────────────
+app.get('/api/status', async (req, res) => {
+  const { reservationId, webKey } = req.query;
+
+  if (!reservationId || !webKey) {
+    return res.status(400).json({ error: 'reservationId and webKey are required' });
+  }
+
+  try {
+    const upstream = await xtFetch(
+      webKey,
+      `panama/rest/dealerxt/${webKey}/appointment/${reservationId}/updateReservationStatus`
+    );
+
+    const data = await upstream.json();
+    console.log(`[status] dealer=${webKey} reservation=${reservationId} status=${upstream.status}`);
+    res.status(upstream.status).json(data);
+  } catch (err) {
+    console.error('[/api/status]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/tracker ──────────────────────────────────────────────────────────
+// Returns the full tracker data (advisor, vehicle, dealer, notification flags).
+//
+// Xtime endpoint:
+//   GET {xtHost}/consumer/rest/statustracker/appointment/{reservationId}/details
 
 app.get('/api/tracker', async (req, res) => {
   const { reservationId, webKey, country = 'AU', language = 'en_AU' } = req.query;
@@ -59,12 +102,13 @@ app.get('/api/tracker', async (req, res) => {
   }
 
   try {
-    const { xtToken, xtHost } = await getXtToken(webKey);
-    const upstream = await xtconGet(
+    const upstream = await xtFetch(
       webKey,
-      `rest/statustracker/appointment/${reservationId}/details?webKey=${webKey}&country=${country}&language=${language}&tokenId=${xtToken}`
+      `consumer/rest/statustracker/appointment/${reservationId}/details?webKey=${webKey}&country=${country}&language=${language}`
     );
+
     const data = await upstream.json();
+    console.log(`[tracker] dealer=${webKey} reservation=${reservationId} status=${upstream.status}`);
     res.status(upstream.status).json(data);
   } catch (err) {
     console.error('[/api/tracker]', err.message);
@@ -72,7 +116,7 @@ app.get('/api/tracker', async (req, res) => {
   }
 });
 
-// ── GET /api/preferences ─────────────────────────────────────────────────────
+// ── GET /api/preferences ──────────────────────────────────────────────────────
 
 app.get('/api/preferences', async (req, res) => {
   const { webKey, personId } = req.query;
@@ -82,8 +126,10 @@ app.get('/api/preferences', async (req, res) => {
   }
 
   try {
-    const { xtToken } = await getXtToken(webKey);
-    const upstream = await xtconGet(webKey, `rest/customer/preferences/${webKey}/${personId}?tokenId=${xtToken}`);
+    const upstream = await xtFetch(
+      webKey,
+      `consumer/rest/customer/preferences/${webKey}/${personId}`
+    );
     const data = await upstream.json();
     res.status(upstream.status).json(data);
   } catch (err) {
@@ -92,7 +138,7 @@ app.get('/api/preferences', async (req, res) => {
   }
 });
 
-// ── POST /api/preferences ────────────────────────────────────────────────────
+// ── POST /api/preferences ─────────────────────────────────────────────────────
 
 app.post('/api/preferences', async (req, res) => {
   const { webKey, personId, notificationType, enabled } = req.body;
@@ -104,10 +150,10 @@ app.post('/api/preferences', async (req, res) => {
   const action = enabled ? 'enable' : 'disable';
 
   try {
-    const { xtToken } = await getXtToken(webKey);
-    const upstream = await xtconPost(
+    const upstream = await xtFetch(
       webKey,
-      `rest/customer/${personId}/dealer/${webKey}/preference/${notificationType}/${action}?tokenId=${xtToken}`
+      `consumer/rest/customer/${personId}/dealer/${webKey}/preference/${notificationType}/${action}`,
+      'POST'
     );
     const data = await upstream.json();
     res.status(upstream.status).json(data);
@@ -118,11 +164,6 @@ app.post('/api/preferences', async (req, res) => {
 });
 
 // ── GET /api/link ─────────────────────────────────────────────────────────────
-// Generate the customer-facing tracker URL from a reservationId + webKey.
-//
-// Example:
-//   GET /api/link?reservationId=69542875560&webKey=australiaford
-//   → { url: "https://tracker.yourdomain.com/?reservationId=69542875560&webKey=australiaford" }
 
 app.get('/api/link', (req, res) => {
   const { reservationId, webKey } = req.query;
@@ -136,49 +177,16 @@ app.get('/api/link', (req, res) => {
 });
 
 // ── POST /api/link/from-appointment ──────────────────────────────────────────
-// Accepts the raw response body from the Xtime appointment create API and
-// returns the ready-to-send customer tracker URL.
+// Accepts the raw appointment create response + webKey (or appointmentUrl).
+// Returns the customer-ready tracker URL.
 //
-// Both webKey and reservationId are dynamic:
-//   - webKey      is unique per dealer — extracted from the appointment create
-//                 URL path (/dealerxt/{webKey}/appointment/create) OR passed
-//                 explicitly in the request body.
-//   - reservationId is unique per appointment — always comes from the response.
+// Option A — webKey explicit:
+//   { success, reservationId, confKey, apptDateTime, webKey }
 //
-// The token cache handles each webKey independently, so multiple dealers
-// can use this server simultaneously with no conflicts.
-//
-// Option A — pass webKey explicitly:
-//   POST /api/link/from-appointment
-//   {
-//     "success": true,
-//     "reservationId": 69542875560,
-//     "confKey": "X09OBV47Z6",
-//     "apptDateTime": "2026-03-18 12:30:00",
-//     "webKey": "australiaford"
-//   }
-//
-// Option B — pass the appointment create URL and let the server extract webKey:
-//   POST /api/link/from-appointment
-//   {
-//     "success": true,
-//     "reservationId": 69542875560,
-//     "confKey": "X09OBV47Z6",
-//     "apptDateTime": "2026-03-18 12:30:00",
-//     "appointmentUrl": "https://x9.vela.net.au/panama/rest/dealerxt/australiaford/appointment/create"
-//   }
-//
-// Response:
-//   {
-//     "url": "https://tracker.yourdomain.com/?reservationId=69542875560&webKey=australiaford",
-//     "reservationId": 69542875560,
-//     "confKey": "X09OBV47Z6",
-//     "apptDateTime": "2026-03-18 12:30:00",
-//     "webKey": "australiaford"
-//   }
+// Option B — extract webKey from URL:
+//   { success, reservationId, confKey, apptDateTime, appointmentUrl }
+//   appointmentUrl: "https://x9.vela.net.au/panama/rest/dealerxt/australiaford/appointment/create"
 
-// Extracts the webKey from an Xtime appointment create URL.
-// URL pattern: .../dealerxt/{webKey}/appointment/create
 function extractWebKeyFromUrl(appointmentUrl) {
   try {
     const match = appointmentUrl.match(/\/dealerxt\/([^/]+)\//);
@@ -192,7 +200,6 @@ app.post('/api/link/from-appointment', (req, res) => {
   const { success, reservationId, confKey, apptDateTime, appointmentUrl } = req.body;
   let { webKey } = req.body;
 
-  // If webKey not passed directly, try to extract from the appointment URL
   if (!webKey && appointmentUrl) {
     webKey = extractWebKeyFromUrl(appointmentUrl);
   }
@@ -205,14 +212,12 @@ app.post('/api/link/from-appointment', (req, res) => {
   }
   if (!webKey) {
     return res.status(400).json({
-      error: 'webKey could not be determined. Pass "webKey" explicitly or pass "appointmentUrl" containing /dealerxt/{webKey}/'
+      error: 'webKey required — pass "webKey" directly or "appointmentUrl" containing /dealerxt/{webKey}/'
     });
   }
 
   const url = `${TRACKER_BASE_URL}/?reservationId=${reservationId}&webKey=${webKey}`;
-
   console.log(`[link] dealer=${webKey} reservation=${reservationId} → ${url}`);
-
   res.json({ url, reservationId, confKey, apptDateTime, webKey });
 });
 
@@ -231,11 +236,12 @@ app.get('/api/health', (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
-  console.log(`\nStatus Tracker server running on http://localhost:${PORT}`);
-  console.log('Credentials:', process.env.XTIME_USERNAME ? 'loaded ✓' : 'WARNING: not set (mock mode only)');
-  console.log('Login URL:  ', process.env.XTIME_LOGIN_URL || 'https://login.vela.net.au/ (default)');
+  console.log(`\nStatus Tracker server  →  http://localhost:${PORT}`);
+  console.log('Credentials:', process.env.XTIME_USERNAME ? 'loaded ✓' : 'WARNING: not set');
+  console.log('Login URL:  ', process.env.XTIME_LOGIN_URL || 'https://login.vela.net.au/');
   console.log('Tracker URL:', TRACKER_BASE_URL);
   console.log('\nEndpoints:');
+  console.log(`  GET  /api/status?reservationId=&webKey=       ← call on page load`);
   console.log(`  GET  /api/tracker?reservationId=&webKey=`);
   console.log(`  GET  /api/link?reservationId=&webKey=`);
   console.log(`  POST /api/link/from-appointment`);
